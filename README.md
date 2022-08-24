@@ -14,8 +14,8 @@ On NEAR protocol, the Octopus Network infrastructure is consisted of a set of sm
 * `<NFT class name>.<appchain id>.octopus-registry.near` - A sub-account of octopus appchain anchor account. The [Wrapped Appchain NFT](https://github.com/octopus-network/wrapped-appchain-nft) contract lived in this account. This contract is deployed automatically when register a NFT class in `Octopus Appchain Anchor`. Each class of wrapped appchain NFT has a corresponding contract of this template, named by its `class name`.
 * `near-receiver.<appchain id>.octopus-registry.near` - A sub-account of octopus appchain anchor account. A contract for receiving native near token for cross-chain transfer lived in this contract. _**(under development)**_
 * `wat-faucet.<appchain id>.octopus-registry.near` - A sub-account of octopus appchain anchor account. A contract for automatically issuing wrapped appchain token to new validator of an appchain lived in this account. The source code is [inside of octopus appchain anchor](https://github.com/octopus-network/octopus-appchain-anchor/tree/main/wat-faucet).
-* `octopus-dao.octoups-registry.near` - A sub-account of octopus appchain registry account. A DAO contract like [Sputnik DAO](https://github.com/near-daos/sputnik-dao-contract) will live in this account. This contract includes all basic rules for the operation of Octopus DAO.
-* `council.octopus-dao.octopus-registry.near` - A sub-account of octopus DAO account. A contract for automatically managing the members of `Octopus Council` will live in this account.
+* `octopus-dao.sputnik-dao.near` - A sub-account of [sputnik-dao](https://github.com/near-daos/sputnik-dao-contract) account lived in NEAR protocol. This contract includes all basic rules and operations for the operation of Octopus DAO.
+* `octopus-council.octopus-registry.near` - A sub-account of octopus registry account. A contract for automatically managing the members of `Octopus Council` will live in this account.
 
 ## Octopus Council Contract
 
@@ -26,6 +26,8 @@ The top `X` of validators with the most stake in all appchains will automaticall
 The octopus council contract will sort all validators in descending order based on their total stake in all appchains. The sequence is:
 
 ![Sync Validators Stake](/images/sync-validators-stake.png)
+
+This contract has a set of view functions to show the status of octopus council.
 
 ## Octopus DAO Contract
 
@@ -57,36 +59,27 @@ A initial policy is needed when create the sputnik DAO contract. It is defined a
 
 Field | Description | Value | Notes
 ---- | ---- | ---- | ----
-roles | List of roles and permissions for them in the current policy. | [`everyone_permissions`, `council_permissions`, `council_manager_permissions`] |
+roles | List of roles and permissions for them in the current policy. | [`council_permissions`, `council_manager_permissions`] |
 default_vote_policy | Default vote policy. Used when given proposal kind doesn't have special policy. | {"weight_kind":"WeightKind::RoleWeight", "quorum":"minimum number of votes", "threshold":"WeightOrRatio::Ratio(1, 2)"} |
-proposal_bond | Bond for a proposal. | 1000000000000000000000000 | 1 NEAR
+proposal_bond | Bond for a proposal. | 0 | 0 NEAR
 proposal_period | Expiration period for proposals. | 604800000000000 | 7 days
 bounty_bond | Bond for claiming a bounty. | 1000000000000000000000000 | 1 NEAR
 bounty_forgiveness_period | Period in which giving up on bounty is not punished. | 86400000000000 | 1 day
-
-The everyone permissions are defined as:
-
-Field | Description | Value | Notes
----- | ---- | ---- | ----
-name | Name of the role to display to the user. | Everyone |
-kind | Kind of the role: defines which users this permissions apply. | RoleKind::Everyone |
-permissions | Set of actions on which proposals that this role is allowed to execute. | {"\*:AddProposal"} |
-vote_policy | For each proposal kind, defines voting policy. | {} |
 
 The council manager permissions are defined as:
 
 Field | Description | Value | Notes
 ---- | ---- | ---- | ----
-name | Name of the role to display to the user. | Council Manager |
+name | Name of the role to display to the user. | council_manager |
 kind | Kind of the role: defines which users this permissions apply. | RoleKind::Group({"`account id of Octopus Council contract`"}) |
-permissions | Set of actions on which proposals that this role is allowed to execute. | {"AddMemberToRole:\*", "RemoveMemberFromRole:\*"} |
+permissions | Set of actions on which proposals that this role is allowed to execute. | {"ChangePolicyAddOrUpdateRole:\*"} |
 vote_policy | For each proposal kind, defines voting policy. | {} |
 
 The council permissions are defined as:
 
 Field | Description | Value | Notes
 ---- | ---- | ---- | ----
-name | Name of the role to display to the user. | Octopus Council |
+name | Name of the role to display to the user. | council |
 kind | Kind of the role: defines which users this permissions apply. | RoleKind::Group({}) | This field is managed by council manager automatically.
 permissions | Set of actions on which proposals that this role is allowed to execute. | {"\*:\*"} | Maybe should specify a list of proposal kind and actions.
 vote_policy | For each proposal kind, defines voting policy. | {} | Using default vote policy is OK.
