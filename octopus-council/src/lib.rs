@@ -14,6 +14,7 @@ use ranked_lookup_array::{RankValueHolder, RankedLookupArray};
 use std::{collections::HashMap, ops::Mul, str::FromStr};
 use types::{ValidatorStake, ValidatorStakeRecord};
 
+const VERSION: &str = "v0.1.0";
 /// Constants for gas.
 const T_GAS_CAP_FOR_MULTI_TXS_PROCESSING: u64 = 150;
 
