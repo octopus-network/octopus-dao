@@ -8,15 +8,14 @@ use near_sdk::{
     collections::{LookupMap, UnorderedMap},
     env,
     json_types::U128,
-    near_bindgen, AccountId, BorshStorageKey, Gas, PanicOnDefault, Promise,
+    log, near_bindgen, AccountId, BorshStorageKey, Gas, PanicOnDefault,
 };
-use ranked_lookup_array::{MultiTxsOperationProcessingResult, RankValueHolder, RankedLookupArray};
+use ranked_lookup_array::{RankValueHolder, RankedLookupArray};
 use std::{collections::HashMap, ops::Mul, str::FromStr};
 use types::{ValidatorStake, ValidatorStakeRecord};
 
 /// Constants for gas.
 const T_GAS_CAP_FOR_MULTI_TXS_PROCESSING: u64 = 150;
-const T_GAS_FOR_BURN_WRAPPED_APPCHAIN_TOKEN: u64 = 35;
 
 /// Storage keys for collections of sub-struct in main contract
 #[derive(BorshStorageKey, BorshSerialize)]
@@ -61,9 +60,12 @@ impl OctopusCouncil {
     pub fn new(max_number_of_council_members: u32) -> Self {
         assert!(!env::state_exists(), "The contract is already initialized.");
         let account_id = String::from(env::current_account_id().as_str());
-        let (_first, second) = account_id.split_once(".").expect(
+        let parts = account_id.split(".").collect::<Vec<&str>>();
+        assert!(
+            parts.len() > 2,
             "This contract must be deployed as a sub-account of octopus appchain registry.",
         );
+        let (_first, second) = account_id.split_once(".").unwrap();
         Self {
             owner: env::current_account_id(),
             appchain_registry_account: AccountId::from_str(second).unwrap(),
@@ -73,39 +75,28 @@ impl OctopusCouncil {
             max_number_of_council_members,
         }
     }
-    // Assert that the contract is called by appchain registry contract.
-    fn assert_registry(&self) {
-        assert_eq!(
-            env::predecessor_account_id(),
-            self.appchain_registry_account,
-            "This function can only be called by appchain registry contract."
-        );
-    }
     // Assert that the contract is called by an appchain anchor contract and
     // return the appchain id corresponding to the predecessor account
-    fn assert_living_anchor(&self) -> String {
+    fn assert_and_update_living_appchain_ids(&mut self) -> String {
         let account_id = String::from(env::predecessor_account_id().as_str());
         let (first, second) = account_id.split_once(".").expect(
-            "This contract must be deployed as a sub-account of octopus appchain registry.",
+            "This contract can only be called by a sub-account of octopus appchain registry.",
         );
         let appchain_id = first.to_string();
         assert!(
             AccountId::from_str(second)
                 .unwrap()
-                .eq(&self.appchain_registry_account)
-                && self.living_appchain_ids.contains(&appchain_id),
-            "This function can only be called by a living appchain anchor contract."
+                .eq(&self.appchain_registry_account),
+            "This function can only be called by an appchain anchor contract."
         );
+        if !self.living_appchain_ids.contains(&appchain_id) {
+            self.living_appchain_ids.push(appchain_id.clone());
+        }
         appchain_id
     }
     ///
-    pub fn sync_living_appchain_ids(&mut self, appchain_ids: Vec<String>) {
-        self.assert_registry();
-        self.living_appchain_ids = appchain_ids;
-    }
-    ///
     pub fn sync_validator_stakes_of_anchor(&mut self, stake_records: Vec<ValidatorStakeRecord>) {
-        let appchain_id = self.assert_living_anchor();
+        let appchain_id = self.assert_and_update_living_appchain_ids();
         let mut changed = false;
         for stake_record in stake_records {
             let mut validator_stake = self
@@ -113,12 +104,19 @@ impl OctopusCouncil {
                 .get(&stake_record.validator_id)
                 .unwrap_or(InternalValidatorStake::new(&stake_record.validator_id));
             validator_stake.update_stake_record(&appchain_id, &stake_record);
-            changed = self.update_validator_rank_of(&mut validator_stake);
             self.validator_stakes
                 .insert(&stake_record.validator_id, &validator_stake);
+            changed = self.update_validator_rank_of(&mut validator_stake);
         }
         if changed {
-            todo!()
+            log!(
+                "validators' ranking status has changed: {}",
+                near_sdk::serde_json::to_string(&self.ranked_validators.get_slice_of(0, None))
+                    .unwrap()
+            );
+            // todo: Sync council members to DAO contract
+        } else {
+            log!("Validators' ranking status has not changed.")
         }
     }
     // the function will return true if the rank of validator stake has been changed and updated,
@@ -142,7 +140,13 @@ impl OctopusCouncil {
                 .append(&validator_stake.validator_id, &self.validator_stakes),
         };
         validator_stake.overall_rank = new_index;
-        new_index != current_index
+        if new_index != current_index {
+            self.validator_stakes
+                .insert(&validator_stake.validator_id, &validator_stake);
+            true
+        } else {
+            false
+        }
     }
 }
 
@@ -166,7 +170,7 @@ impl InternalValidatorStake {
                 validator_id.clone(),
             )),
             total_stake: U128(0),
-            overall_rank: 0,
+            overall_rank: u32::MAX,
         }
     }
     //

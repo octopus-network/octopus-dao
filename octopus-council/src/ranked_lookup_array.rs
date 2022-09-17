@@ -112,7 +112,7 @@ where
     ) -> u32 {
         let mut current_index = index;
         if self.length > 1 {
-            while current_index < self.length {
+            while current_index < self.length - 1 {
                 let next_index = current_index + 1;
                 let next_rank_value =
                     rank_value_holder.get_rank_value_of(&self.get(next_index).unwrap());
