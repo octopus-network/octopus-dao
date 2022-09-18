@@ -128,26 +128,20 @@ impl OctopusCouncil {
             Some(account_id) => {
                 assert!(
                     account_id.eq(&validator_stake.validator_id),
-                    "Invalid internal state of ordered validators. Need to reset."
+                    "Invalid internal state of ordered validators. Account at index '{}' is '{}', but the updating validator is '{}'.",
+                    current_index, account_id, validator_stake.validator_id,
                 );
                 self.ranked_validators.insert(
                     current_index,
                     &validator_stake.validator_id,
-                    &self.validator_stakes,
+                    &mut self.validator_stakes,
                 )
             }
             None => self
                 .ranked_validators
-                .append(&validator_stake.validator_id, &self.validator_stakes),
+                .append(&validator_stake.validator_id, &mut self.validator_stakes),
         };
-        validator_stake.overall_rank = new_index;
-        if new_index != current_index {
-            self.validator_stakes
-                .insert(&validator_stake.validator_id, &validator_stake);
-            true
-        } else {
-            false
-        }
+        new_index != current_index
     }
 }
 
@@ -211,5 +205,11 @@ impl RankValueHolder<AccountId> for LookupMap<AccountId, InternalValidatorStake>
     //
     fn get_rank_value_of(&self, member: &AccountId) -> u128 {
         self.get(&member).unwrap().total_stake.0
+    }
+    //
+    fn update_rank_of(&mut self, member: &AccountId, new_rank: u32) {
+        let mut validator_stake = self.get(&member).unwrap();
+        validator_stake.overall_rank = new_rank;
+        self.insert(member, &validator_stake);
     }
 }

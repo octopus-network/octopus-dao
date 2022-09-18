@@ -15,4 +15,7 @@ near view $COUNCIL_ACCOUNT_ID get_living_appchain_ids
 #
 near view $COUNCIL_ACCOUNT_ID get_council_members
 #
-near view $COUNCIL_ACCOUNT_ID get_validator_stake_of '{"account_id":"xxxx"}'
+near view $COUNCIL_ACCOUNT_ID get_validator_stake_of '{"account_id":"alice-octopus.testnet"}'
+near view $COUNCIL_ACCOUNT_ID get_validator_stake_of '{"account_id":"bob-octopus.testnet"}'
+near view $COUNCIL_ACCOUNT_ID get_validator_stake_of '{"account_id":"charlie-octopus.testnet"}'
+near view $COUNCIL_ACCOUNT_ID get_validator_stake_of '{"account_id":"dave-octopus.testnet"}'

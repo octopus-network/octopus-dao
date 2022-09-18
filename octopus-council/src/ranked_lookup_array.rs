@@ -4,6 +4,8 @@ use near_sdk::serde::{Deserialize, Serialize};
 pub trait RankValueHolder<T: BorshDeserialize + BorshSerialize> {
     ///
     fn get_rank_value_of(&self, member: &T) -> u128;
+    ///
+    fn update_rank_of(&mut self, member: &T, new_rank: u32);
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -59,8 +61,9 @@ where
         results
     }
     ///
-    pub fn append<S: RankValueHolder<T>>(&mut self, record: &T, rank_value_holder: &S) -> u32 {
+    pub fn append<S: RankValueHolder<T>>(&mut self, record: &T, rank_value_holder: &mut S) -> u32 {
         self.lookup_map.insert(&self.length, &record);
+        rank_value_holder.update_rank_of(record, self.length);
         self.length += 1;
         //
         self.move_up_by_rank_value(record, self.length - 1, rank_value_holder)
@@ -70,7 +73,7 @@ where
         &mut self,
         record: &T,
         index: u32,
-        rank_value_holder: &S,
+        rank_value_holder: &mut S,
     ) -> u32 {
         let mut current_index = index;
         while current_index > 0 {
@@ -81,7 +84,7 @@ where
             if current_rank_value <= previous_rank_value {
                 break;
             } else {
-                self.swap((previous_index, current_index));
+                self.swap((previous_index, current_index), rank_value_holder);
                 current_index = previous_index;
             }
         }
@@ -92,7 +95,7 @@ where
         &mut self,
         index: u32,
         record: &T,
-        rank_value_holder: &S,
+        rank_value_holder: &mut S,
     ) -> u32 {
         assert!(index < self.length, "Index is out of bound of the array.");
         self.lookup_map.insert(&index, record);
@@ -108,7 +111,7 @@ where
         &mut self,
         record: &T,
         index: u32,
-        rank_value_holder: &S,
+        rank_value_holder: &mut S,
     ) -> u32 {
         let mut current_index = index;
         if self.length > 1 {
@@ -120,7 +123,7 @@ where
                 if current_rank_value >= next_rank_value {
                     break;
                 } else {
-                    self.swap((next_index, current_index));
+                    self.swap((next_index, current_index), rank_value_holder);
                     current_index = next_index;
                 }
             }
@@ -148,7 +151,7 @@ where
         }
     }
     ///
-    fn swap(&mut self, index_pair: (u32, u32)) {
+    fn swap<S: RankValueHolder<T>>(&mut self, index_pair: (u32, u32), rank_value_holder: &mut S) {
         assert!(
             index_pair.0 < self.length
                 && index_pair.1 < self.length
@@ -158,6 +161,8 @@ where
         let t0 = self.lookup_map.get(&index_pair.0).unwrap();
         let t1 = self.lookup_map.get(&index_pair.1).unwrap();
         self.lookup_map.insert(&index_pair.0, &t1);
+        rank_value_holder.update_rank_of(&t1, index_pair.0);
         self.lookup_map.insert(&index_pair.1, &t0);
+        rank_value_holder.update_rank_of(&t0, index_pair.1);
     }
 }
