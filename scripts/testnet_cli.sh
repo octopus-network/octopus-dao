@@ -10,3 +10,5 @@ export COUNCIL_ACCOUNT_ID=octopus-council.$REGISTRY_ACCOUNT_ID
 #
 #
 near deploy --accountId $COUNCIL_ACCOUNT_ID --wasmFile res/octopus_council.wasm
+#
+near call $COUNCIL_ACCOUNT_ID migrate_state '' --accountId $COUNCIL_ACCOUNT_ID --gas 200000000000000
