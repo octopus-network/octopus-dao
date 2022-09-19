@@ -1,20 +1,27 @@
+mod lookup_array;
 mod ranked_lookup_array;
+mod storage_migration;
 mod types;
+mod upgrade;
 mod views;
 
+use lookup_array::{IndexedAndClearable, LookupArray};
 use near_contract_standards::upgrade::Ownable;
 use near_sdk::{
     borsh::{self, BorshDeserialize, BorshSerialize},
-    collections::{LookupMap, UnorderedMap},
+    collections::{LookupMap, UnorderedMap, UnorderedSet},
     env,
-    json_types::U128,
+    json_types::{U128, U64},
     log, near_bindgen, AccountId, BorshStorageKey, Gas, PanicOnDefault,
 };
 use ranked_lookup_array::{RankValueHolder, RankedLookupArray};
 use std::{collections::HashMap, ops::Mul, str::FromStr};
-use types::{ValidatorStake, ValidatorStakeRecord};
+use types::{
+    CouncilChangeHistory, IndexRange, MultiTxsOperationProcessingResult, ValidatorStake,
+    ValidatorStakeRecord,
+};
 
-const VERSION: &str = "v0.1.0";
+const VERSION: &str = "v0.2.0";
 /// Constants for gas.
 const T_GAS_CAP_FOR_MULTI_TXS_PROCESSING: u64 = 150;
 
@@ -24,6 +31,9 @@ pub enum StorageKey {
     ValidatorStakes,
     OrderedValidators,
     ValidatorStakeInAppchains(AccountId),
+    OctopusCouncilWasm,
+    LatestMembers,
+    CouncilChangeHistories,
 }
 
 #[derive(BorshSerialize, BorshDeserialize)]
@@ -53,6 +63,12 @@ pub struct OctopusCouncil {
     ranked_validators: RankedLookupArray<AccountId>,
     //
     max_number_of_council_members: u32,
+    //
+    latest_members: UnorderedSet<AccountId>,
+    //
+    change_histories: LookupArray<CouncilChangeHistory>,
+    // The index of change history which is already applied to DAO contract
+    latest_applied_change_history: Option<u64>,
 }
 
 #[near_bindgen]
@@ -67,14 +83,25 @@ impl OctopusCouncil {
             "This contract must be deployed as a sub-account of octopus appchain registry.",
         );
         let (_first, second) = account_id.split_once(".").unwrap();
-        Self {
+        let mut result = Self {
             owner: env::current_account_id(),
             appchain_registry_account: AccountId::from_str(second).unwrap(),
             living_appchain_ids: Vec::new(),
             validator_stakes: LookupMap::new(StorageKey::ValidatorStakes),
             ranked_validators: RankedLookupArray::new(StorageKey::OrderedValidators),
             max_number_of_council_members,
-        }
+            latest_members: UnorderedSet::new(StorageKey::LatestMembers),
+            change_histories: LookupArray::new(StorageKey::CouncilChangeHistories),
+            latest_applied_change_history: None,
+        };
+        result.change_histories.append(&mut CouncilChangeHistory {
+            action: types::CouncilChangeAction::MaxNumberOfMembersChanged(
+                max_number_of_council_members,
+            ),
+            index: U64::from(0),
+            timestamp: U64::from(env::block_timestamp()),
+        });
+        result
     }
     // Assert that the contract is called by an appchain anchor contract and
     // return the appchain id corresponding to the predecessor account
@@ -115,7 +142,7 @@ impl OctopusCouncil {
                 near_sdk::serde_json::to_string(&self.ranked_validators.get_slice_of(0, None))
                     .unwrap()
             );
-            // todo: Sync council members to DAO contract
+            self.check_and_generate_change_histories();
         } else {
             log!("Validators' ranking status has not changed.")
         }
@@ -142,6 +169,44 @@ impl OctopusCouncil {
                 .append(&validator_stake.validator_id, &mut self.validator_stakes),
         };
         new_index != current_index
+    }
+    //
+    fn check_and_generate_change_histories(&mut self) {
+        let council_members = self
+            .ranked_validators
+            .get_slice_of(0, Some(self.max_number_of_council_members));
+        for account_id in &council_members {
+            if !self.latest_members.contains(account_id) {
+                self.latest_members.insert(account_id);
+                let history = self.change_histories.append(&mut CouncilChangeHistory {
+                    action: types::CouncilChangeAction::MemberAdded(account_id.clone()),
+                    index: U64::from(0),
+                    timestamp: U64::from(env::block_timestamp()),
+                });
+                log!(
+                    "Council change history generated: '{}'",
+                    near_sdk::serde_json::to_string(&history).unwrap()
+                );
+            }
+        }
+        for account_id in self.latest_members.to_vec() {
+            if !council_members.contains(&account_id) {
+                self.latest_members.remove(&account_id);
+                let history = self.change_histories.append(&mut CouncilChangeHistory {
+                    action: types::CouncilChangeAction::MemberRemoved(account_id.clone()),
+                    index: U64::from(0),
+                    timestamp: U64::from(env::block_timestamp()),
+                });
+                log!(
+                    "Council change history generated: '{}'",
+                    near_sdk::serde_json::to_string(&history).unwrap()
+                );
+            }
+        }
+    }
+    ///
+    pub fn apply_change_histories_to_dao_contract(&mut self) -> MultiTxsOperationProcessingResult {
+        todo!()
     }
 }
 

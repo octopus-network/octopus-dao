@@ -18,17 +18,36 @@ impl OctopusCouncil {
             .to_json_type()
     }
     //
-    pub fn get_council_members(&self) -> Vec<AccountId> {
+    pub fn get_ranked_validator_stakes(
+        &self,
+        start_index: u32,
+        quantity: Option<u32>,
+    ) -> Vec<ValidatorStake> {
         let all_members = match self.ranked_validators.len() > 0 {
-            true => self.ranked_validators.get_slice_of(0, None),
+            true => self.ranked_validators.get_slice_of(start_index, quantity),
             false => Vec::new(),
         };
-        if all_members.len() > self.max_number_of_council_members as usize {
-            return all_members
-                .split_at(self.max_number_of_council_members as usize)
-                .0
-                .to_vec();
-        }
         all_members
+            .iter()
+            .map(|account_id| {
+                self.validator_stakes
+                    .get(account_id)
+                    .unwrap()
+                    .to_json_type()
+            })
+            .collect()
+    }
+    //
+    pub fn get_council_members(&self) -> Vec<AccountId> {
+        self.latest_members.to_vec()
+    }
+    //
+    pub fn get_council_change_histories(
+        &self,
+        start_index: U64,
+        quantity: Option<U64>,
+    ) -> Vec<CouncilChangeHistory> {
+        self.change_histories
+            .get_slice_of(&start_index.0, quantity.map(|q| q.0))
     }
 }

@@ -1,19 +1,10 @@
 use crate::*;
-use near_sdk::serde::{Deserialize, Serialize};
 
 pub trait RankValueHolder<T: BorshDeserialize + BorshSerialize> {
     ///
     fn get_rank_value_of(&self, member: &T) -> u128;
     ///
     fn update_rank_of(&mut self, member: &T, new_rank: u32);
-}
-
-#[derive(Serialize, Deserialize, Clone)]
-#[serde(crate = "near_sdk::serde")]
-pub enum MultiTxsOperationProcessingResult {
-    NeedMoreGas,
-    Ok,
-    Error(String),
 }
 
 #[derive(BorshDeserialize, BorshSerialize)]
