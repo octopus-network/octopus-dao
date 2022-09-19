@@ -1,7 +1,7 @@
 mod lookup_array;
 mod ranked_lookup_array;
 mod storage_migration;
-mod types;
+pub mod types;
 mod upgrade;
 mod views;
 
