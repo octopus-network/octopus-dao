@@ -8,22 +8,36 @@ mod views;
 use lookup_array::{IndexedAndClearable, LookupArray};
 use near_contract_standards::upgrade::Ownable;
 use near_sdk::{
+    assert_self,
     borsh::{self, BorshDeserialize, BorshSerialize},
     collections::{LookupMap, UnorderedMap, UnorderedSet},
-    env,
+    env, ext_contract,
     json_types::{U128, U64},
-    log, near_bindgen, AccountId, BorshStorageKey, Gas, PanicOnDefault,
+    log, near_bindgen,
+    serde::{Deserialize, Serialize},
+    AccountId, BorshStorageKey, Gas, PanicOnDefault, Promise, PromiseResult,
 };
 use ranked_lookup_array::{RankValueHolder, RankedLookupArray};
 use std::{collections::HashMap, ops::Mul, str::FromStr};
 use types::{
-    CouncilChangeHistory, IndexRange, MultiTxsOperationProcessingResult, ValidatorStake,
-    ValidatorStakeRecord,
+    CouncilChangeHistory, CouncilChangeHistoryState, IndexRange, MultiTxsOperationProcessingResult,
+    ValidatorStake, ValidatorStakeRecord,
 };
 
-const VERSION: &str = "v0.2.0";
+const VERSION: &str = "v0.3.0";
 /// Constants for gas.
 const T_GAS_CAP_FOR_MULTI_TXS_PROCESSING: u64 = 150;
+const T_GAS_FOR_ADD_PROPOSAL: u64 = 5;
+const T_GAS_FOR_RESOLVER_FUNCTION: u64 = 8;
+const T_GAS_FOR_ACT_PROPOSAL: u64 = 5;
+
+#[ext_contract(ext_self)]
+trait ResolverForSelfCallback {
+    /// Resolver for adding proposal to DAO contract
+    fn resolve_add_proposal(&mut self, change_history: &mut CouncilChangeHistory);
+    /// Resolver for acting proposal to DAO contract
+    fn resolve_act_proposal(&mut self, change_history: &mut CouncilChangeHistory);
+}
 
 /// Storage keys for collections of sub-struct in main contract
 #[derive(BorshStorageKey, BorshSerialize)]
@@ -56,6 +70,8 @@ pub struct OctopusCouncil {
     //
     appchain_registry_account: AccountId,
     //
+    dao_contract_account: AccountId,
+    //
     living_appchain_ids: Vec<String>,
     //
     validator_stakes: LookupMap<AccountId, InternalValidatorStake>,
@@ -67,14 +83,12 @@ pub struct OctopusCouncil {
     latest_members: UnorderedSet<AccountId>,
     //
     change_histories: LookupArray<CouncilChangeHistory>,
-    // The index of change history which is already applied to DAO contract
-    latest_applied_change_history: Option<u64>,
 }
 
 #[near_bindgen]
 impl OctopusCouncil {
     #[init]
-    pub fn new(max_number_of_council_members: u32) -> Self {
+    pub fn new(max_number_of_council_members: u32, dao_contract_account: AccountId) -> Self {
         assert!(!env::state_exists(), "The contract is already initialized.");
         let account_id = String::from(env::current_account_id().as_str());
         let parts = account_id.split(".").collect::<Vec<&str>>();
@@ -86,19 +100,20 @@ impl OctopusCouncil {
         let mut result = Self {
             owner: env::current_account_id(),
             appchain_registry_account: AccountId::from_str(second).unwrap(),
+            dao_contract_account,
             living_appchain_ids: Vec::new(),
             validator_stakes: LookupMap::new(StorageKey::ValidatorStakes),
             ranked_validators: RankedLookupArray::new(StorageKey::OrderedValidators),
             max_number_of_council_members,
             latest_members: UnorderedSet::new(StorageKey::LatestMembers),
             change_histories: LookupArray::new(StorageKey::CouncilChangeHistories),
-            latest_applied_change_history: None,
         };
         result.change_histories.append(&mut CouncilChangeHistory {
+            index: U64::from(0),
             action: types::CouncilChangeAction::MaxNumberOfMembersChanged(
                 max_number_of_council_members,
             ),
-            index: U64::from(0),
+            state: CouncilChangeHistoryState::WaitingForApplying,
             timestamp: U64::from(env::block_timestamp()),
         });
         result
@@ -179,8 +194,9 @@ impl OctopusCouncil {
             if !self.latest_members.contains(account_id) {
                 self.latest_members.insert(account_id);
                 let history = self.change_histories.append(&mut CouncilChangeHistory {
-                    action: types::CouncilChangeAction::MemberAdded(account_id.clone()),
                     index: U64::from(0),
+                    action: types::CouncilChangeAction::MemberAdded(account_id.clone()),
+                    state: CouncilChangeHistoryState::WaitingForApplying,
                     timestamp: U64::from(env::block_timestamp()),
                 });
                 log!(
@@ -193,8 +209,9 @@ impl OctopusCouncil {
             if !council_members.contains(&account_id) {
                 self.latest_members.remove(&account_id);
                 let history = self.change_histories.append(&mut CouncilChangeHistory {
-                    action: types::CouncilChangeAction::MemberRemoved(account_id.clone()),
                     index: U64::from(0),
+                    action: types::CouncilChangeAction::MemberRemoved(account_id.clone()),
+                    state: CouncilChangeHistoryState::WaitingForApplying,
                     timestamp: U64::from(env::block_timestamp()),
                 });
                 log!(
@@ -205,8 +222,148 @@ impl OctopusCouncil {
         }
     }
     ///
-    pub fn apply_change_histories_to_dao_contract(&mut self) -> MultiTxsOperationProcessingResult {
-        todo!()
+    pub fn set_dao_contract_account(&mut self, account_id: AccountId) {
+        self.assert_owner();
+        self.dao_contract_account = account_id;
+    }
+    ///
+    pub fn apply_change_histories_to_dao_contract(
+        &mut self,
+        start_index: U64,
+    ) -> MultiTxsOperationProcessingResult {
+        assert!(
+            self.dao_contract_account.to_string().len() > 0,
+            "Invalid account id of DAO contract."
+        );
+        let index_range = self.change_histories.index_range();
+        let mut index = start_index.0;
+        while index <= index_range.end_index.0
+            && env::used_gas() < Gas::ONE_TERA.mul(T_GAS_CAP_FOR_MULTI_TXS_PROCESSING)
+        {
+            let mut change_history = self.change_histories.get(&index).unwrap();
+            match change_history.state {
+                CouncilChangeHistoryState::WaitingForApplying => {
+                    self.add_proposal_to_dao_contract(&mut change_history)
+                }
+                CouncilChangeHistoryState::ProposalAdded(_) => {
+                    self.act_proposal_on_dao_contract(&mut change_history)
+                }
+                _ => (),
+            }
+            index += 1;
+        }
+        if index > index_range.end_index.0 {
+            MultiTxsOperationProcessingResult::Ok
+        } else {
+            MultiTxsOperationProcessingResult::NeedMoreGas
+        }
+    }
+    //
+    fn add_proposal_to_dao_contract(&mut self, change_history: &mut CouncilChangeHistory) {
+        #[derive(Serialize, Deserialize, Clone)]
+        #[serde(crate = "near_sdk::serde")]
+        enum ProposalKind {
+            /// Add member to given role in the policy. This is short cut to updating the whole policy.
+            AddMemberToRole { member_id: AccountId, role: String },
+            /// Remove member to given role in the policy. This is short cut to updating the whole policy.
+            RemoveMemberFromRole { member_id: AccountId, role: String },
+        }
+        #[derive(Serialize, Deserialize, Clone)]
+        #[serde(crate = "near_sdk::serde")]
+        struct ProposalInput {
+            /// Description of this proposal.
+            pub description: String,
+            /// Kind of proposal with relevant information.
+            pub kind: ProposalKind,
+        }
+        #[derive(Serialize, Deserialize, Clone)]
+        #[serde(crate = "near_sdk::serde")]
+        struct Input {
+            pub proposal: ProposalInput,
+        }
+        let args = match &change_history.action {
+            types::CouncilChangeAction::MaxNumberOfMembersChanged(_) => return,
+            types::CouncilChangeAction::MemberAdded(account_id) => Input {
+                proposal: ProposalInput {
+                    description: format!(""),
+                    kind: ProposalKind::AddMemberToRole {
+                        member_id: account_id.clone(),
+                        role: "council".to_string(),
+                    },
+                },
+            },
+            types::CouncilChangeAction::MemberRemoved(account_id) => Input {
+                proposal: ProposalInput {
+                    description: format!(""),
+                    kind: ProposalKind::RemoveMemberFromRole {
+                        member_id: account_id.clone(),
+                        role: "council".to_string(),
+                    },
+                },
+            },
+        };
+        let args = near_sdk::serde_json::to_vec(&args)
+            .expect("Failed to serialize the cross contract args using JSON.");
+        Promise::new(self.dao_contract_account.clone())
+            .function_call(
+                "add_proposal".to_string(),
+                args,
+                0,
+                Gas::ONE_TERA.mul(T_GAS_FOR_ADD_PROPOSAL),
+            )
+            .then(
+                ext_self::ext(env::current_account_id())
+                    .with_attached_deposit(0)
+                    .with_static_gas(Gas::ONE_TERA.mul(T_GAS_FOR_RESOLVER_FUNCTION))
+                    .with_unused_gas_weight(0)
+                    .resolve_add_proposal(change_history),
+            );
+    }
+    //
+    fn act_proposal_on_dao_contract(&mut self, change_history: &mut CouncilChangeHistory) {
+        #[derive(Serialize, Deserialize, Clone)]
+        #[serde(crate = "near_sdk::serde")]
+        enum Action {
+            /// Vote to approve given proposal or bounty.
+            VoteApprove,
+        }
+        #[derive(Serialize, Deserialize, Clone)]
+        #[serde(crate = "near_sdk::serde")]
+        struct Input {
+            pub id: u64,
+            pub action: Action,
+            pub memo: Option<String>,
+        }
+        let args = Input {
+            id: match change_history.state {
+                CouncilChangeHistoryState::ProposalAdded(proposal_id) => proposal_id,
+                _ => panic!(
+                    "Invalid state of change history: '{}'",
+                    near_sdk::serde_json::to_string(change_history).unwrap()
+                ),
+            },
+            action: Action::VoteApprove,
+            memo: Some(format!(
+                "Automatically vote approve by '{}'.",
+                env::current_account_id()
+            )),
+        };
+        let args = near_sdk::serde_json::to_vec(&args)
+            .expect("Failed to serialize the cross contract args using JSON.");
+        Promise::new(self.dao_contract_account.clone())
+            .function_call(
+                "act_proposal".to_string(),
+                args,
+                0,
+                Gas::ONE_TERA.mul(T_GAS_FOR_ACT_PROPOSAL),
+            )
+            .then(
+                ext_self::ext(env::current_account_id())
+                    .with_attached_deposit(0)
+                    .with_static_gas(Gas::ONE_TERA.mul(T_GAS_FOR_RESOLVER_FUNCTION))
+                    .with_unused_gas_weight(0)
+                    .resolve_act_proposal(change_history),
+            );
     }
 }
 
@@ -276,5 +433,49 @@ impl RankValueHolder<AccountId> for LookupMap<AccountId, InternalValidatorStake>
         let mut validator_stake = self.get(&member).unwrap();
         validator_stake.overall_rank = new_rank;
         self.insert(member, &validator_stake);
+    }
+}
+
+#[near_bindgen]
+impl ResolverForSelfCallback for OctopusCouncil {
+    //
+    fn resolve_add_proposal(&mut self, change_history: &mut CouncilChangeHistory) {
+        assert_self();
+        match env::promise_result(0) {
+            PromiseResult::NotReady => unreachable!(),
+            PromiseResult::Successful(bytes) => {
+                change_history.state = CouncilChangeHistoryState::ProposalAdded(
+                    near_sdk::serde_json::from_slice::<u64>(&bytes).unwrap(),
+                );
+                self.change_histories
+                    .insert(&change_history.index.0, change_history);
+                //
+                self.act_proposal_on_dao_contract(change_history);
+            }
+            PromiseResult::Failed => {
+                log!(
+                    "Failed to add proposal for change history: '{}'",
+                    near_sdk::serde_json::to_string(&change_history).unwrap()
+                );
+            }
+        }
+    }
+    //
+    fn resolve_act_proposal(&mut self, change_history: &mut CouncilChangeHistory) {
+        assert_self();
+        match env::promise_result(0) {
+            PromiseResult::NotReady => unreachable!(),
+            PromiseResult::Successful(_) => {
+                change_history.state = CouncilChangeHistoryState::ProposalApproved;
+                self.change_histories
+                    .insert(&change_history.index.0, change_history);
+            }
+            PromiseResult::Failed => {
+                log!(
+                    "Failed to act proposal for change history: '{}'",
+                    near_sdk::serde_json::to_string(&change_history).unwrap()
+                );
+            }
+        }
     }
 }

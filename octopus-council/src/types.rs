@@ -74,9 +74,19 @@ pub enum CouncilChangeAction {
 
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone)]
 #[serde(crate = "near_sdk::serde")]
+pub enum CouncilChangeHistoryState {
+    NoNeedToApply,
+    WaitingForApplying,
+    ProposalAdded(u64),
+    ProposalApproved,
+}
+
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone)]
+#[serde(crate = "near_sdk::serde")]
 pub struct CouncilChangeHistory {
-    pub action: CouncilChangeAction,
     pub index: U64,
+    pub action: CouncilChangeAction,
+    pub state: CouncilChangeHistoryState,
     pub timestamp: U64,
 }
 
