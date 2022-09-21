@@ -10,6 +10,14 @@ impl OctopusCouncil {
     pub fn get_living_appchain_ids(&self) -> Vec<String> {
         self.living_appchain_ids.clone()
     }
+    ///
+    pub fn get_max_number_of_council_members(&self) -> u32 {
+        self.max_number_of_council_members
+    }
+    ///
+    pub fn get_excluding_validator_accounts(&self) -> Vec<AccountId> {
+        self.excluding_validator_accounts.clone()
+    }
     //
     pub fn get_validator_stake_of(&self, account_id: AccountId) -> ValidatorStake {
         self.validator_stakes

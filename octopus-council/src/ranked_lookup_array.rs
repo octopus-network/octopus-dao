@@ -40,7 +40,7 @@ where
         let end_index = match quantity {
             Some(quantity) => match quantity > self.length - start_index - 1 {
                 true => self.length - 1,
-                false => start_index + quantity,
+                false => start_index + quantity - 1,
             },
             None => self.length - 1,
         };

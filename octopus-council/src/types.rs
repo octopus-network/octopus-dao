@@ -67,7 +67,6 @@ pub struct ValidatorStake {
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone)]
 #[serde(crate = "near_sdk::serde")]
 pub enum CouncilChangeAction {
-    MaxNumberOfMembersChanged(u32),
     MemberAdded(AccountId),
     MemberRemoved(AccountId),
 }

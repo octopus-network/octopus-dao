@@ -13,6 +13,10 @@ near view $COUNCIL_ACCOUNT_ID version
 #
 near view $COUNCIL_ACCOUNT_ID get_living_appchain_ids
 #
+near view $COUNCIL_ACCOUNT_ID get_max_number_of_council_members
+#
+near view $COUNCIL_ACCOUNT_ID get_excluding_validator_accounts
+#
 near view $COUNCIL_ACCOUNT_ID get_council_members
 #
 near view $COUNCIL_ACCOUNT_ID get_ranked_validator_stakes '{"start_index":0,"quantity":null}'

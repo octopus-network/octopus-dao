@@ -1,6 +1,7 @@
 mod lookup_array;
 mod ranked_lookup_array;
 mod storage_migration;
+mod sudo_functions;
 pub mod types;
 mod upgrade;
 mod views;
@@ -82,6 +83,8 @@ pub struct OctopusCouncil {
     //
     latest_members: UnorderedSet<AccountId>,
     //
+    excluding_validator_accounts: Vec<AccountId>,
+    //
     change_histories: LookupArray<CouncilChangeHistory>,
 }
 
@@ -97,7 +100,7 @@ impl OctopusCouncil {
             "This contract must be deployed as a sub-account of octopus appchain registry.",
         );
         let (_first, second) = account_id.split_once(".").unwrap();
-        let mut result = Self {
+        let result = Self {
             owner: env::current_account_id(),
             appchain_registry_account: AccountId::from_str(second).unwrap(),
             dao_contract_account,
@@ -106,16 +109,9 @@ impl OctopusCouncil {
             ranked_validators: RankedLookupArray::new(StorageKey::OrderedValidators),
             max_number_of_council_members,
             latest_members: UnorderedSet::new(StorageKey::LatestMembers),
+            excluding_validator_accounts: Vec::new(),
             change_histories: LookupArray::new(StorageKey::CouncilChangeHistories),
         };
-        result.change_histories.append(&mut CouncilChangeHistory {
-            index: U64::from(0),
-            action: types::CouncilChangeAction::MaxNumberOfMembersChanged(
-                max_number_of_council_members,
-            ),
-            state: CouncilChangeHistoryState::WaitingForApplying,
-            timestamp: U64::from(env::block_timestamp()),
-        });
         result
     }
     // Assert that the contract is called by an appchain anchor contract and
@@ -191,7 +187,9 @@ impl OctopusCouncil {
             .ranked_validators
             .get_slice_of(0, Some(self.max_number_of_council_members));
         for account_id in &council_members {
-            if !self.latest_members.contains(account_id) {
+            if !self.latest_members.contains(account_id)
+                && !self.excluding_validator_accounts.contains(account_id)
+            {
                 self.latest_members.insert(account_id);
                 let history = self.change_histories.append(&mut CouncilChangeHistory {
                     index: U64::from(0),
@@ -205,9 +203,11 @@ impl OctopusCouncil {
                 );
             }
         }
-        for account_id in self.latest_members.to_vec() {
-            if !council_members.contains(&account_id) {
-                self.latest_members.remove(&account_id);
+        for account_id in &self.latest_members.to_vec() {
+            if !council_members.contains(account_id)
+                || self.excluding_validator_accounts.contains(account_id)
+            {
+                self.latest_members.remove(account_id);
                 let history = self.change_histories.append(&mut CouncilChangeHistory {
                     index: U64::from(0),
                     action: types::CouncilChangeAction::MemberRemoved(account_id.clone()),
@@ -282,10 +282,13 @@ impl OctopusCouncil {
             pub proposal: ProposalInput,
         }
         let args = match &change_history.action {
-            types::CouncilChangeAction::MaxNumberOfMembersChanged(_) => return,
             types::CouncilChangeAction::MemberAdded(account_id) => Input {
                 proposal: ProposalInput {
-                    description: format!(""),
+                    description: format!(
+                        "Add '{}' to council based on the rule in contract '{}'.",
+                        account_id,
+                        env::current_account_id()
+                    ),
                     kind: ProposalKind::AddMemberToRole {
                         member_id: account_id.clone(),
                         role: "council".to_string(),
@@ -294,7 +297,11 @@ impl OctopusCouncil {
             },
             types::CouncilChangeAction::MemberRemoved(account_id) => Input {
                 proposal: ProposalInput {
-                    description: format!(""),
+                    description: format!(
+                        "Remove '{}' from council based on the rule in contract '{}'.",
+                        account_id,
+                        env::current_account_id()
+                    ),
                     kind: ProposalKind::RemoveMemberFromRole {
                         member_id: account_id.clone(),
                         role: "council".to_string(),
@@ -364,6 +371,24 @@ impl OctopusCouncil {
                     .with_unused_gas_weight(0)
                     .resolve_act_proposal(change_history),
             );
+    }
+    ///
+    pub fn set_max_number_of_council_members(&mut self, max_number_of_council_members: u32) {
+        self.assert_owner();
+        assert!(
+            self.max_number_of_council_members != max_number_of_council_members,
+            "The value is not changed."
+        );
+        self.max_number_of_council_members = max_number_of_council_members;
+        //
+        self.check_and_generate_change_histories();
+    }
+    ///
+    pub fn set_excluding_validator_accounts(&mut self, accounts: Vec<AccountId>) {
+        self.assert_owner();
+        self.excluding_validator_accounts = accounts;
+        //
+        self.check_and_generate_change_histories();
     }
 }
 
