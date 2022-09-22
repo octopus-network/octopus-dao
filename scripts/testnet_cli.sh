@@ -26,4 +26,4 @@ export COUNCIL_ACCOUNT_ID=octopus-council.$REGISTRY_ACCOUNT_ID
 #
 # near call $COUNCIL_ACCOUNT_ID clear_council_members_and_regenerate_change_histories '' --accountId $COUNCIL_ACCOUNT_ID --gas 200000000000000
 #
-# near call $COUNCIL_ACCOUNT_ID set_excluding_validator_accounts '{"accounts":["alice-octopus.testnet","bob-octopus.testnet"]}' --accountId $COUNCIL_ACCOUNT_ID --gas 200000000000000
+# near call $COUNCIL_ACCOUNT_ID set_excluding_validator_accounts '{"accounts":["alice-octopus.testnet","bob-octopus.testnet","charlie-octopus.testnet","dave-octopus.testnet"]}' --accountId $COUNCIL_ACCOUNT_ID --gas 200000000000000

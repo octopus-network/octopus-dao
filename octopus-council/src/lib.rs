@@ -29,8 +29,9 @@ const VERSION: &str = "v0.3.0";
 /// Constants for gas.
 const T_GAS_CAP_FOR_MULTI_TXS_PROCESSING: u64 = 150;
 const T_GAS_FOR_ADD_PROPOSAL: u64 = 5;
-const T_GAS_FOR_RESOLVER_FUNCTION: u64 = 8;
-const T_GAS_FOR_ACT_PROPOSAL: u64 = 5;
+const T_GAS_FOR_RESOLVE_ADD_PROPOSAL: u64 = 25;
+const T_GAS_FOR_ACT_PROPOSAL: u64 = 7;
+const T_GAS_FOR_RESOLVE_ACT_PROPOSAL: u64 = 5;
 
 #[ext_contract(ext_self)]
 trait ResolverForSelfCallback {
@@ -321,7 +322,7 @@ impl OctopusCouncil {
             .then(
                 ext_self::ext(env::current_account_id())
                     .with_attached_deposit(0)
-                    .with_static_gas(Gas::ONE_TERA.mul(T_GAS_FOR_RESOLVER_FUNCTION))
+                    .with_static_gas(Gas::ONE_TERA.mul(T_GAS_FOR_RESOLVE_ADD_PROPOSAL))
                     .with_unused_gas_weight(0)
                     .resolve_add_proposal(change_history),
             );
@@ -367,7 +368,7 @@ impl OctopusCouncil {
             .then(
                 ext_self::ext(env::current_account_id())
                     .with_attached_deposit(0)
-                    .with_static_gas(Gas::ONE_TERA.mul(T_GAS_FOR_RESOLVER_FUNCTION))
+                    .with_static_gas(Gas::ONE_TERA.mul(T_GAS_FOR_RESOLVE_ACT_PROPOSAL))
                     .with_unused_gas_weight(0)
                     .resolve_act_proposal(change_history),
             );
@@ -491,7 +492,14 @@ impl ResolverForSelfCallback for OctopusCouncil {
         match env::promise_result(0) {
             PromiseResult::NotReady => unreachable!(),
             PromiseResult::Successful(_) => {
-                change_history.state = CouncilChangeHistoryState::ProposalApproved;
+                let proposal_id = match change_history.state {
+                    CouncilChangeHistoryState::ProposalAdded(id) => id,
+                    _ => panic!(
+                        "Invalid state of council change history: '{}'",
+                        near_sdk::serde_json::to_string(change_history).unwrap()
+                    ),
+                };
+                change_history.state = CouncilChangeHistoryState::ProposalApproved(proposal_id);
                 self.change_histories
                     .insert(&change_history.index.0, change_history);
             }

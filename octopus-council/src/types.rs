@@ -77,7 +77,7 @@ pub enum CouncilChangeHistoryState {
     NoNeedToApply,
     WaitingForApplying,
     ProposalAdded(u64),
-    ProposalApproved,
+    ProposalApproved(u64),
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone)]
