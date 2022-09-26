@@ -18,7 +18,8 @@ beefy-light-client = { git = "https://github.com/octopus-network/beefy-light-cli
 codec = { package = "parity-scale-codec", version = "3.0.0", default-features = false, features = ["derive"] }
 beefy-merkle-tree = { git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.12", features = ["keccak"], default-features = false }
 # remember to include related mock contracts
-appchain-anchor = { git = "https://github.com/octopus-network/octopus-appchain-anchor.git", branch = "v2.3.0" }
+mock-appchain-anchor = { path = "./mock-appchain-anchor" }
+octopus-council = { path = "./octopus-council" }
 tokio = { version = "1.14", features = ["full"] }
 workspaces = "0.4"
 
@@ -33,5 +34,6 @@ overflow-checks = true
 
 [workspace]
 members = [
+    "mock-appchain-anchor",
     "octopus-council",
 ]

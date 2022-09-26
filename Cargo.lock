@@ -104,20 +104,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a26fa4d7e3f2eebadf743988fc8aec9fa9a9e82611acafd77c1462ed6262440a"
 
 [[package]]
-name = "appchain-anchor"
-version = "2.3.0"
-source = "git+https://github.com/octopus-network/octopus-appchain-anchor.git?branch=v2.3.0#6303bdc762e10d9e7e4f822da6da9009584598c7"
-dependencies = [
- "beefy-light-client",
- "ed25519-dalek",
- "getrandom 0.2.7",
- "hex 0.4.3",
- "near-contract-standards",
- "near-sdk",
- "parity-scale-codec 2.3.1",
-]
-
-[[package]]
 name = "arrayref"
 version = "0.3.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1431,6 +1417,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "mock-appchain-anchor"
+version = "0.1.0"
+dependencies = [
+ "near-contract-standards",
+ "near-sdk",
+]
+
+[[package]]
 name = "native-tls"
 version = "0.2.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2131,16 +2125,17 @@ name = "octopus-dao"
 version = "0.3.0"
 dependencies = [
  "anyhow",
- "appchain-anchor",
  "beefy-light-client",
  "beefy-merkle-tree 4.0.0-dev (git+https://github.com/paritytech/substrate.git?branch=polkadot-v0.9.12)",
  "hex 0.4.3",
  "hex-literal",
+ "mock-appchain-anchor",
  "near-contract-standards",
  "near-primitives 0.5.0",
  "near-sdk",
  "near-units",
  "num-format",
+ "octopus-council",
  "parity-scale-codec 3.1.5",
  "secp256k1",
  "tokio",
