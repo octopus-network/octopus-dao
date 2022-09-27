@@ -50,6 +50,7 @@ pub enum StorageKey {
     OctopusCouncilWasm,
     LatestMembers,
     CouncilChangeHistories,
+    ValidatorsWaitingToUpdateRank,
 }
 
 #[derive(BorshSerialize, BorshDeserialize)]
@@ -87,6 +88,8 @@ pub struct OctopusCouncil {
     excluding_validator_accounts: Vec<AccountId>,
     //
     change_histories: LookupArray<CouncilChangeHistory>,
+    //
+    validators_waiting_to_update_rank: UnorderedSet<AccountId>,
 }
 
 #[near_bindgen]
@@ -112,6 +115,9 @@ impl OctopusCouncil {
             latest_members: UnorderedSet::new(StorageKey::LatestMembers),
             excluding_validator_accounts: Vec::new(),
             change_histories: LookupArray::new(StorageKey::CouncilChangeHistories),
+            validators_waiting_to_update_rank: UnorderedSet::new(
+                StorageKey::ValidatorsWaitingToUpdateRank,
+            ),
         };
         result
     }
@@ -137,26 +143,39 @@ impl OctopusCouncil {
     ///
     pub fn sync_validator_stakes_of_anchor(&mut self, stake_records: Vec<ValidatorStakeRecord>) {
         let appchain_id = self.assert_and_update_living_appchain_ids();
-        let mut changed = false;
         for stake_record in stake_records {
             let mut validator_stake = self
                 .validator_stakes
                 .get(&stake_record.validator_id)
                 .unwrap_or(InternalValidatorStake::new(&stake_record.validator_id));
-            validator_stake.update_stake_record(&appchain_id, &stake_record);
-            self.validator_stakes
-                .insert(&stake_record.validator_id, &validator_stake);
-            changed = self.update_validator_rank_of(&mut validator_stake);
+            if validator_stake.update_stake_record(&appchain_id, &stake_record) {
+                self.validator_stakes
+                    .insert(&stake_record.validator_id, &validator_stake);
+                log!(
+                    "Total stake of validator '{}' has changed, need to update rank.",
+                    stake_record.validator_id
+                );
+                self.validators_waiting_to_update_rank
+                    .insert(&stake_record.validator_id);
+            }
         }
-        if changed {
-            log!(
-                "validators' ranking status has changed: {}",
-                near_sdk::serde_json::to_string(&self.ranked_validators.get_slice_of(0, None))
-                    .unwrap()
-            );
-            self.check_and_generate_change_histories();
+    }
+    ///
+    pub fn update_council_change_histories(&mut self) -> MultiTxsOperationProcessingResult {
+        let validator_ids = self.validators_waiting_to_update_rank.to_vec();
+        if validator_ids.len() > 0 {
+            for validator_id in validator_ids {
+                let mut validator_stake = self.validator_stakes.get(&validator_id).unwrap();
+                self.update_validator_rank_of(&mut validator_stake);
+                self.validators_waiting_to_update_rank.remove(&validator_id);
+                if env::used_gas() > Gas::ONE_TERA.mul(T_GAS_CAP_FOR_MULTI_TXS_PROCESSING) {
+                    break;
+                }
+            }
+            return MultiTxsOperationProcessingResult::NeedMoreGas;
         } else {
-            log!("Validators' ranking status has not changed.")
+            self.check_and_generate_change_histories();
+            MultiTxsOperationProcessingResult::Ok
         }
     }
     // the function will return true if the rank of validator stake has been changed and updated,
@@ -421,15 +440,20 @@ impl InternalValidatorStake {
         &mut self,
         appchain_id: &String,
         stake_record: &ValidatorStakeRecord,
-    ) {
+    ) -> bool {
         assert_eq!(
             self.validator_id, stake_record.validator_id,
             "Mismatch validator id in `ValidatorStakeRecord`."
         );
         let old_value = self.stake_in_appchains.get(&appchain_id).unwrap_or(U128(0));
-        self.stake_in_appchains
-            .insert(appchain_id, &stake_record.total_stake);
-        self.total_stake.0 = self.total_stake.0 - old_value.0 + stake_record.total_stake.0;
+        if stake_record.total_stake != old_value {
+            self.stake_in_appchains
+                .insert(appchain_id, &stake_record.total_stake);
+            self.total_stake.0 = self.total_stake.0 - old_value.0 + stake_record.total_stake.0;
+            true
+        } else {
+            false
+        }
     }
     //
     pub fn to_json_type(&self) -> ValidatorStake {

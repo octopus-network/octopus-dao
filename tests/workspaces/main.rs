@@ -4,14 +4,16 @@ use near_sdk::{
     serde_json::{self, json},
     AccountId,
 };
-use octopus_council::types::{CouncilChangeHistory, ValidatorStake};
+use octopus_council::types::{
+    CouncilChangeHistory, MultiTxsOperationProcessingResult, ValidatorStake,
+};
 
 #[tokio::test]
 async fn test_sync_staking_amount() -> anyhow::Result<()> {
     //
     let worker = workspaces::sandbox().await?;
     let (_root, council, anchors, _users) =
-        common::initialize_contracts_and_users(&worker, 10, 20).await?;
+        common::initialize_contracts_and_users(&worker, 1, 60).await?;
     //
     //
     //
@@ -23,6 +25,27 @@ async fn test_sync_staking_amount() -> anyhow::Result<()> {
             .await;
         println!("{:?}", result);
         println!();
+    }
+    //
+    loop {
+        let result = council
+            .call(&worker, "update_council_change_histories")
+            .gas(200_000_000_000_000)
+            .transact()
+            .await?;
+        let result = result.json::<MultiTxsOperationProcessingResult>()?;
+        println!(
+            "Result of calling 'update_council_change_histories': {}",
+            serde_json::to_string::<MultiTxsOperationProcessingResult>(&result).unwrap()
+        );
+        println!();
+        match result {
+            MultiTxsOperationProcessingResult::Ok => break,
+            MultiTxsOperationProcessingResult::NeedMoreGas => (),
+            MultiTxsOperationProcessingResult::Error(message) => {
+                panic!("Failed to update council change histories: {}", &message);
+            }
+        }
     }
     //
     //

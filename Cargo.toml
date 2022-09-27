@@ -1,6 +1,6 @@
 [package]
 name = "octopus-dao"
-version = "0.3.0"
+version = "0.4.0"
 authors = ["Octopus Network"]
 edition = "2021"
 

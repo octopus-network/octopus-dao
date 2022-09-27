@@ -22,6 +22,8 @@ pub struct OldOctopusCouncil {
     //
     latest_members: UnorderedSet<AccountId>,
     //
+    excluding_validator_accounts: Vec<AccountId>,
+    //
     change_histories: LookupArray<CouncilChangeHistory>,
 }
 
@@ -44,8 +46,11 @@ impl OctopusCouncil {
             ranked_validators: old_contract.ranked_validators,
             max_number_of_council_members: old_contract.max_number_of_council_members,
             latest_members: old_contract.latest_members,
-            excluding_validator_accounts: Vec::new(),
+            excluding_validator_accounts: old_contract.excluding_validator_accounts,
             change_histories: old_contract.change_histories,
+            validators_waiting_to_update_rank: UnorderedSet::new(
+                StorageKey::ValidatorsWaitingToUpdateRank,
+            ),
         };
         //
         //
