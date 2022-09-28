@@ -25,7 +25,7 @@ use types::{
     ValidatorStake, ValidatorStakeRecord,
 };
 
-const VERSION: &str = "v0.3.0";
+const VERSION: &str = "v0.4.0";
 /// Constants for gas.
 const T_GAS_CAP_FOR_MULTI_TXS_PROCESSING: u64 = 150;
 const T_GAS_FOR_ADD_PROPOSAL: u64 = 5;
