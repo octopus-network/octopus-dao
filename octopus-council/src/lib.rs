@@ -203,13 +203,20 @@ impl OctopusCouncil {
     }
     //
     fn check_and_generate_change_histories(&mut self) {
-        let council_members = self
-            .ranked_validators
-            .get_slice_of(0, Some(self.max_number_of_council_members));
+        let validator_accounts = self.ranked_validators.get_slice_of(0, None);
+        // generate a new array of council members
+        let mut council_members = Vec::new();
+        for account_id in validator_accounts {
+            if !self.excluding_validator_accounts.contains(&account_id) {
+                council_members.push(account_id);
+                if council_members.len() >= self.max_number_of_council_members as usize {
+                    break;
+                }
+            }
+        }
+        // update `latest_members` and generate change histories
         for account_id in &council_members {
-            if !self.latest_members.contains(account_id)
-                && !self.excluding_validator_accounts.contains(account_id)
-            {
+            if !self.latest_members.contains(account_id) {
                 self.latest_members.insert(account_id);
                 let history = self.change_histories.append(&mut CouncilChangeHistory {
                     index: U64::from(0),
@@ -224,9 +231,7 @@ impl OctopusCouncil {
             }
         }
         for account_id in &self.latest_members.to_vec() {
-            if !council_members.contains(account_id)
-                || self.excluding_validator_accounts.contains(account_id)
-            {
+            if !council_members.contains(account_id) {
                 self.latest_members.remove(account_id);
                 let history = self.change_histories.append(&mut CouncilChangeHistory {
                     index: U64::from(0),
@@ -408,6 +413,40 @@ impl OctopusCouncil {
         self.assert_owner();
         self.excluding_validator_accounts = accounts;
         //
+        self.check_and_generate_change_histories();
+    }
+    /// Called by valid validator accounts,
+    /// to exclude self from council members
+    pub fn exclude_validator_from_council(&mut self) {
+        let validator_id = env::predecessor_account_id();
+        assert!(
+            self.validator_stakes.contains_key(&validator_id),
+            "Only valid validator can call this function."
+        );
+        assert!(
+            !self.excluding_validator_accounts.contains(&validator_id),
+            "Validator '{}' is already excluded.",
+            validator_id
+        );
+        //
+        self.excluding_validator_accounts.push(validator_id);
+        self.check_and_generate_change_histories();
+    }
+    /// Called by excluding validator account,
+    /// to recover self from excluding validator accounts
+    pub fn recover_excluding_validator(&mut self) {
+        let validator_id = env::predecessor_account_id();
+        assert!(
+            self.excluding_validator_accounts.contains(&validator_id),
+            "Only excluding validator can call this function."
+        );
+        //
+        self.excluding_validator_accounts = self
+            .excluding_validator_accounts
+            .iter()
+            .filter(|account| !(*account).eq(&validator_id))
+            .map(|account| account.clone())
+            .collect::<Vec<AccountId>>();
         self.check_and_generate_change_histories();
     }
 }
