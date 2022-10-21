@@ -25,7 +25,7 @@ use types::{
     ValidatorStake, ValidatorStakeRecord,
 };
 
-const VERSION: &str = "v0.4.0";
+const VERSION: &str = "v0.5.0";
 /// Constants for gas.
 const T_GAS_CAP_FOR_MULTI_TXS_PROCESSING: u64 = 150;
 const T_GAS_FOR_ADD_PROPOSAL: u64 = 5;
@@ -51,6 +51,8 @@ pub enum StorageKey {
     LatestMembers,
     CouncilChangeHistories,
     ValidatorsWaitingToUpdateRank,
+    LivingAppchainIds,
+    ExcludingValidatorAccounts,
 }
 
 #[derive(BorshSerialize, BorshDeserialize)]
@@ -75,7 +77,7 @@ pub struct OctopusCouncil {
     //
     dao_contract_account: AccountId,
     //
-    living_appchain_ids: Vec<String>,
+    living_appchain_ids: UnorderedSet<String>,
     //
     validator_stakes: LookupMap<AccountId, InternalValidatorStake>,
     //
@@ -85,7 +87,7 @@ pub struct OctopusCouncil {
     //
     latest_members: UnorderedSet<AccountId>,
     //
-    excluding_validator_accounts: Vec<AccountId>,
+    excluding_validator_accounts: UnorderedSet<AccountId>,
     //
     change_histories: LookupArray<CouncilChangeHistory>,
     //
@@ -108,12 +110,12 @@ impl OctopusCouncil {
             owner: env::current_account_id(),
             appchain_registry_account: AccountId::from_str(second).unwrap(),
             dao_contract_account,
-            living_appchain_ids: Vec::new(),
+            living_appchain_ids: UnorderedSet::new(StorageKey::LivingAppchainIds),
             validator_stakes: LookupMap::new(StorageKey::ValidatorStakes),
             ranked_validators: RankedLookupArray::new(StorageKey::OrderedValidators),
             max_number_of_council_members,
             latest_members: UnorderedSet::new(StorageKey::LatestMembers),
-            excluding_validator_accounts: Vec::new(),
+            excluding_validator_accounts: UnorderedSet::new(StorageKey::ExcludingValidatorAccounts),
             change_histories: LookupArray::new(StorageKey::CouncilChangeHistories),
             validators_waiting_to_update_rank: UnorderedSet::new(
                 StorageKey::ValidatorsWaitingToUpdateRank,
@@ -136,7 +138,7 @@ impl OctopusCouncil {
             "This function can only be called by an appchain anchor contract."
         );
         if !self.living_appchain_ids.contains(&appchain_id) {
-            self.living_appchain_ids.push(appchain_id.clone());
+            self.living_appchain_ids.insert(&appchain_id);
         }
         appchain_id
     }
@@ -408,13 +410,6 @@ impl OctopusCouncil {
         //
         self.check_and_generate_change_histories();
     }
-    ///
-    pub fn set_excluding_validator_accounts(&mut self, accounts: Vec<AccountId>) {
-        self.assert_owner();
-        self.excluding_validator_accounts = accounts;
-        //
-        self.check_and_generate_change_histories();
-    }
     /// Called by valid validator accounts,
     /// to exclude self from council members
     pub fn exclude_validator_from_council(&mut self) {
@@ -429,7 +424,7 @@ impl OctopusCouncil {
             validator_id
         );
         //
-        self.excluding_validator_accounts.push(validator_id);
+        self.excluding_validator_accounts.insert(&validator_id);
         self.check_and_generate_change_histories();
     }
     /// Called by excluding validator account,
@@ -441,12 +436,7 @@ impl OctopusCouncil {
             "Only excluding validator can call this function."
         );
         //
-        self.excluding_validator_accounts = self
-            .excluding_validator_accounts
-            .iter()
-            .filter(|account| !(*account).eq(&validator_id))
-            .map(|account| account.clone())
-            .collect::<Vec<AccountId>>();
+        self.excluding_validator_accounts.remove(&validator_id);
         self.check_and_generate_change_histories();
     }
 }

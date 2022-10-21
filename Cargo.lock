@@ -2114,7 +2114,7 @@ dependencies = [
 
 [[package]]
 name = "octopus-council"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "near-contract-standards",
  "near-sdk",
@@ -2122,7 +2122,7 @@ dependencies = [
 
 [[package]]
 name = "octopus-dao"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "beefy-light-client",
