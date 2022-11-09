@@ -1,6 +1,6 @@
 #!/bin/bash
 cargo fmt --all
-cargo doc -p octopus-council --no-deps
+cargo doc -p council-keeper --no-deps
 RUSTFLAGS='-C link-arg=-s' cargo build --all --target wasm32-unknown-unknown --release
 if [ ! -d "res" ]; then
     mkdir -p "res"

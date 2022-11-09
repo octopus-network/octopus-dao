@@ -1,7 +1,7 @@
 use crate::*;
 
 #[near_bindgen]
-impl OctopusCouncil {
+impl CouncilKeeper {
     ///
     pub fn version(&self) -> String {
         String::from(VERSION)

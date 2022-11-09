@@ -69,7 +69,7 @@ pub struct InternalValidatorStake {
 
 #[near_bindgen]
 #[derive(BorshSerialize, BorshDeserialize, PanicOnDefault)]
-pub struct OctopusCouncil {
+pub struct CouncilKeeper {
     //
     owner: AccountId,
     //
@@ -95,7 +95,7 @@ pub struct OctopusCouncil {
 }
 
 #[near_bindgen]
-impl OctopusCouncil {
+impl CouncilKeeper {
     #[init]
     pub fn new(max_number_of_council_members: u32, dao_contract_account: AccountId) -> Self {
         assert!(!env::state_exists(), "The contract is already initialized.");
@@ -441,7 +441,7 @@ impl OctopusCouncil {
     }
 }
 
-impl Ownable for OctopusCouncil {
+impl Ownable for CouncilKeeper {
     //
     fn get_owner(&self) -> AccountId {
         self.owner.clone()
@@ -516,7 +516,7 @@ impl RankValueHolder<AccountId> for LookupMap<AccountId, InternalValidatorStake>
 }
 
 #[near_bindgen]
-impl ResolverForSelfCallback for OctopusCouncil {
+impl ResolverForSelfCallback for CouncilKeeper {
     //
     fn resolve_add_proposal(&mut self, change_history: &mut CouncilChangeHistory) {
         assert_self();

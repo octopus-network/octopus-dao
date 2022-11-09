@@ -1,6 +1,6 @@
 [package]
 name = "octopus-dao"
-version = "0.5.0"
+version = "0.5.1"
 authors = ["Octopus Network"]
 edition = "2021"
 
@@ -13,15 +13,11 @@ near-primitives = "0.5.0"
 near-units = "0.2.0"
 hex = "0.4.2"
 num-format = "0.4.0"
-secp256k1-test = { package = "secp256k1", version = "0.20.3", features = ["rand-std", "recovery"] }
-beefy-light-client = { git = "https://github.com/octopus-network/beefy-light-client.git", branch = "main" }
-codec = { package = "parity-scale-codec", version = "3.0.0", default-features = false, features = ["derive"] }
-beefy-merkle-tree = { git = "https://github.com/paritytech/substrate.git", branch = "polkadot-v0.9.12", features = ["keccak"], default-features = false }
 # remember to include related mock contracts
 mock-appchain-anchor = { path = "./mock-appchain-anchor" }
-octopus-council = { path = "./octopus-council" }
+council-keeper = { path = "./council-keeper" }
 tokio = { version = "1.14", features = ["full"] }
-workspaces = "0.4"
+workspaces = "0.6"
 
 [profile.release]
 codegen-units = 1
@@ -35,5 +31,5 @@ overflow-checks = true
 [workspace]
 members = [
     "mock-appchain-anchor",
-    "octopus-council",
+    "council-keeper",
 ]

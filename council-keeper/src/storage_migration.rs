@@ -30,7 +30,7 @@ pub struct OldOctopusCouncil {
 }
 
 #[near_bindgen]
-impl OctopusCouncil {
+impl CouncilKeeper {
     #[init(ignore_state)]
     pub fn migrate_state() -> Self {
         // Deserialize the state using the old contract structure.
@@ -39,7 +39,7 @@ impl OctopusCouncil {
         near_sdk::assert_self();
         //
         // Create the new contract using the data from the old contract.
-        let mut new_contract = OctopusCouncil {
+        let mut new_contract = CouncilKeeper {
             owner: old_contract.owner,
             appchain_registry_account: old_contract.appchain_registry_account,
             dao_contract_account: old_contract.dao_contract_account,

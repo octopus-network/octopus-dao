@@ -69,7 +69,7 @@ impl Contract {
         let args = near_sdk::serde_json::to_vec(&args)
             .expect("Failed to serialize the cross contract args using JSON.");
         let contract_account =
-            AccountId::from_str(format!("octopus-council.{}", self.appchain_registry).as_str())
+            AccountId::from_str(format!("council-keeper.{}", self.appchain_registry).as_str())
                 .unwrap();
         Promise::new(contract_account).function_call(
             "sync_validator_stakes_of_anchor".to_string(),

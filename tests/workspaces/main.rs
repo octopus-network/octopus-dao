@@ -1,11 +1,11 @@
 mod common;
 
+use council_keeper::types::{
+    CouncilChangeHistory, MultiTxsOperationProcessingResult, ValidatorStake,
+};
 use near_sdk::{
     serde_json::{self, json},
     AccountId,
-};
-use octopus_council::types::{
-    CouncilChangeHistory, MultiTxsOperationProcessingResult, ValidatorStake,
 };
 
 #[tokio::test]
@@ -19,7 +19,7 @@ async fn test_sync_staking_amount() -> anyhow::Result<()> {
     //
     for anchor in anchors {
         let result = anchor
-            .call(&worker, "sync_validator_stakes_of_anchor")
+            .call("sync_validator_stakes_of_anchor")
             .gas(200_000_000_000_000)
             .transact()
             .await;
@@ -29,7 +29,7 @@ async fn test_sync_staking_amount() -> anyhow::Result<()> {
     //
     loop {
         let result = council
-            .call(&worker, "update_council_change_histories")
+            .call("update_council_change_histories")
             .gas(200_000_000_000_000)
             .transact()
             .await?;
@@ -51,7 +51,7 @@ async fn test_sync_staking_amount() -> anyhow::Result<()> {
     //
     //
     let result = council
-        .call(&worker, "get_living_appchain_ids")
+        .call("get_living_appchain_ids")
         .view()
         .await?
         .json::<Vec<String>>()
@@ -62,7 +62,7 @@ async fn test_sync_staking_amount() -> anyhow::Result<()> {
     );
     //
     let result = council
-        .call(&worker, "get_council_members")
+        .call("get_council_members")
         .view()
         .await?
         .json::<Vec<AccountId>>()
@@ -73,11 +73,11 @@ async fn test_sync_staking_amount() -> anyhow::Result<()> {
     );
     //
     let result = council
-        .call(&worker, "get_ranked_validator_stakes")
+        .call("get_ranked_validator_stakes")
         .args_json(json!( {
             "start_index": 0,
             "quantity": null,
-        }))?
+        }))
         .view()
         .await?
         .json::<Vec<ValidatorStake>>()
@@ -88,11 +88,11 @@ async fn test_sync_staking_amount() -> anyhow::Result<()> {
     );
     //
     let result = council
-        .call(&worker, "get_council_change_histories")
+        .call("get_council_change_histories")
         .args_json(json!( {
             "start_index": "0",
             "quantity": null,
-        }))?
+        }))
         .view()
         .await?
         .json::<Vec<CouncilChangeHistory>>()

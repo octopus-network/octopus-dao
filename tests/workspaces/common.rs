@@ -20,7 +20,7 @@ pub async fn initialize_contracts_and_users(
     for index in 1..appchain_count * validator_count_per_appchain + 1 {
         let account_id = format!("{}{}", BASE_VALIDATOR_ID, index);
         let account = root
-            .create_subaccount(worker, &account_id)
+            .create_subaccount(&account_id)
             .initial_balance(parse_near!("10 N"))
             .transact()
             .await?
@@ -31,7 +31,7 @@ pub async fn initialize_contracts_and_users(
     // appchain registry contract
     //
     let appchain_registry = root
-        .create_subaccount(worker, "appchain_registry")
+        .create_subaccount("appchain_registry")
         .initial_balance(parse_near!("200 N"))
         .transact()
         .await?
@@ -40,7 +40,7 @@ pub async fn initialize_contracts_and_users(
     // dao contract
     //
     let dao_contract = root
-        .create_subaccount(worker, "octopus-dao")
+        .create_subaccount("octopus-dao")
         .initial_balance(parse_near!("10 N"))
         .transact()
         .await?
@@ -48,41 +48,40 @@ pub async fn initialize_contracts_and_users(
     //
     // deploy octopus council contract
     //
-    let octopus_council = appchain_registry
-        .create_subaccount(worker, "octopus-council")
+    let council_keeper = appchain_registry
+        .create_subaccount("council-keeper")
         .initial_balance(parse_near!("10 N"))
         .transact()
         .await?
         .unwrap();
-    let octopus_council = octopus_council
-        .deploy(worker, &std::fs::read(format!("res/octopus_council.wasm"))?)
+    let council_keeper = council_keeper
+        .deploy(&std::fs::read(format!("res/council_keeper.wasm"))?)
         .await?
         .unwrap();
-    octopus_council
-        .call(worker, "new")
+    assert!(council_keeper
+        .call("new")
         .args_json(json!({
             "max_number_of_council_members": 3,
             "dao_contract_account": dao_contract.id().to_string(),
-        }))?
+        }))
         .gas(300_000_000_000_000)
         .transact()
-        .await?;
+        .await
+        .unwrap()
+        .is_success());
     //
     // deploy appchain anchor contract
     //
     for index in 1..appchain_count as usize + 1 {
         let appchain_id = format!("{}{}", BASE_APPCHAIN_ID, index);
         let appchain_anchor = appchain_registry
-            .create_subaccount(worker, &appchain_id)
+            .create_subaccount(&appchain_id)
             .initial_balance(parse_near!("5 N"))
             .transact()
             .await?
             .unwrap();
         let appchain_anchor = appchain_anchor
-            .deploy(
-                worker,
-                &std::fs::read(format!("res/mock_appchain_anchor.wasm"))?,
-            )
+            .deploy(&std::fs::read(format!("res/mock_appchain_anchor.wasm"))?)
             .await?
             .unwrap();
         let validator_accounts: Vec<String> = users[((index - 1)
@@ -92,16 +91,19 @@ pub async fn initialize_contracts_and_users(
             .iter()
             .map(|account| account.id().to_string())
             .collect();
-        root.call(worker, appchain_anchor.id(), "new")
+        assert!(root
+            .call(appchain_anchor.id(), "new")
             .args_json(json!({
                 "appchain_id": appchain_id,
                 "validator_accounts": validator_accounts,
-            }))?
+            }))
             .gas(300_000_000_000_000)
             .transact()
-            .await?;
+            .await
+            .unwrap()
+            .is_success());
         anchors.push(appchain_anchor);
     }
     //
-    Ok((root, octopus_council, anchors, users))
+    Ok((root, council_keeper, anchors, users))
 }
