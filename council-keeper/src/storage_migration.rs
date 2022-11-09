@@ -22,11 +22,15 @@ pub struct OldOctopusCouncil {
     //
     latest_members: UnorderedSet<AccountId>,
     //
+    excluding_validator_accounts: Vec<AccountId>,
+    //
     change_histories: LookupArray<CouncilChangeHistory>,
+    //
+    validators_waiting_to_update_rank: UnorderedSet<AccountId>,
 }
 
 #[near_bindgen]
-impl OctopusCouncil {
+impl CouncilKeeper {
     #[init(ignore_state)]
     pub fn migrate_state() -> Self {
         // Deserialize the state using the old contract structure.
@@ -35,19 +39,30 @@ impl OctopusCouncil {
         near_sdk::assert_self();
         //
         // Create the new contract using the data from the old contract.
-        let new_contract = OctopusCouncil {
+        let mut new_contract = CouncilKeeper {
             owner: old_contract.owner,
             appchain_registry_account: old_contract.appchain_registry_account,
             dao_contract_account: old_contract.dao_contract_account,
-            living_appchain_ids: old_contract.living_appchain_ids,
+            living_appchain_ids: UnorderedSet::new(StorageKey::LivingAppchainIds),
             validator_stakes: old_contract.validator_stakes,
             ranked_validators: old_contract.ranked_validators,
             max_number_of_council_members: old_contract.max_number_of_council_members,
             latest_members: old_contract.latest_members,
-            excluding_validator_accounts: Vec::new(),
+            excluding_validator_accounts: UnorderedSet::new(StorageKey::ExcludingValidatorAccounts),
             change_histories: old_contract.change_histories,
+            validators_waiting_to_update_rank: UnorderedSet::new(
+                StorageKey::ValidatorsWaitingToUpdateRank,
+            ),
         };
         //
+        for appchain_id in old_contract.living_appchain_ids {
+            new_contract.living_appchain_ids.insert(&appchain_id);
+        }
+        for account_id in old_contract.excluding_validator_accounts {
+            new_contract
+                .excluding_validator_accounts
+                .insert(&account_id);
+        }
         //
         new_contract
     }

@@ -1,10 +1,8 @@
 #!/bin/bash
 set -e
 #
-# export NEAR_CLI_TESTNET_RPC_SERVER_URL=https://near-testnet.infura.io/v3/4f80a04e6eb2437a9ed20cb874e10d55
-# export NEAR_CLI_TESTNET_RPC_SERVER_URL=https://public-rpc.blockpi.io/http/near-testnet
-export NEAR_ENV=testnet
-export REGISTRY_ACCOUNT_ID=registry.test_oct.testnet
+export NEAR_ENV=mainnet
+export REGISTRY_ACCOUNT_ID=octopus-registry.near
 export COUNCIL_ACCOUNT_ID=octopus-council.$REGISTRY_ACCOUNT_ID
 #
 #
@@ -20,6 +18,8 @@ export COUNCIL_ACCOUNT_ID=octopus-council.$REGISTRY_ACCOUNT_ID
 #
 # near call $COUNCIL_ACCOUNT_ID set_dao_contract_account '{"account_id":"octopus-dao.sputnikv2.testnet"}' --accountId $COUNCIL_ACCOUNT_ID --gas 200000000000000
 #
+# near call $COUNCIL_ACCOUNT_ID update_council_change_histories --accountId $COUNCIL_ACCOUNT_ID --gas 200000000000000
+#
 # near call $COUNCIL_ACCOUNT_ID apply_change_histories_to_dao_contract '{"start_index":"0"}' --accountId $COUNCIL_ACCOUNT_ID --gas 200000000000000
 #
 # near call $COUNCIL_ACCOUNT_ID set_max_number_of_council_members '{"max_number_of_council_members":10}' --accountId $COUNCIL_ACCOUNT_ID --gas 200000000000000
@@ -27,7 +27,3 @@ export COUNCIL_ACCOUNT_ID=octopus-council.$REGISTRY_ACCOUNT_ID
 # near call $COUNCIL_ACCOUNT_ID clear_council_members_and_regenerate_change_histories '' --accountId $COUNCIL_ACCOUNT_ID --gas 200000000000000
 #
 # near call $COUNCIL_ACCOUNT_ID set_excluding_validator_accounts '{"accounts":["alice-octopus.testnet","bob-octopus.testnet","charlie-octopus.testnet","dave-octopus.testnet"]}' --accountId $COUNCIL_ACCOUNT_ID --gas 200000000000000
-#
-# near call $COUNCIL_ACCOUNT_ID exclude_validator_from_council '' --accountId riversyang.testnet --gas 200000000000000
-#
-# near call $COUNCIL_ACCOUNT_ID recover_excluding_validator '' --accountId riversyang.testnet --gas 200000000000000

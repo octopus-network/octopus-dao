@@ -1,6 +1,6 @@
 [package]
-name = "octopus-council"
-version = "0.3.0"
+name = "council-keeper"
+version = "0.5.1"
 edition = "2021"
 
 [lib]

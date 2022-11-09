@@ -1,14 +1,14 @@
 use crate::*;
 
 #[near_bindgen]
-impl OctopusCouncil {
+impl CouncilKeeper {
     ///
     pub fn version(&self) -> String {
         String::from(VERSION)
     }
     ///
     pub fn get_living_appchain_ids(&self) -> Vec<String> {
-        self.living_appchain_ids.clone()
+        self.living_appchain_ids.to_vec()
     }
     ///
     pub fn get_max_number_of_council_members(&self) -> u32 {
@@ -16,7 +16,7 @@ impl OctopusCouncil {
     }
     ///
     pub fn get_excluding_validator_accounts(&self) -> Vec<AccountId> {
-        self.excluding_validator_accounts.clone()
+        self.excluding_validator_accounts.to_vec()
     }
     //
     pub fn get_validator_stake_of(&self, account_id: AccountId) -> ValidatorStake {

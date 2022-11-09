@@ -1,7 +1,7 @@
 use crate::*;
 
 #[near_bindgen]
-impl OctopusCouncil {
+impl CouncilKeeper {
     ///
     pub fn clear_council_members_and_regenerate_change_histories(&mut self) {
         self.assert_owner();

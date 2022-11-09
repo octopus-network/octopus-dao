@@ -9,7 +9,7 @@ const GAS_FOR_UPGRADE_SELF_DEPLOY: Gas = Gas(15_000_000_000_000);
 #[no_mangle]
 pub extern "C" fn store_wasm_of_self() {
     env::setup_panic_hook();
-    let contract: OctopusCouncil = env::state_read().expect("ERR_CONTRACT_IS_NOT_INITIALIZED");
+    let contract: CouncilKeeper = env::state_read().expect("ERR_CONTRACT_IS_NOT_INITIALIZED");
     contract.assert_owner();
     let input = env::input().expect("ERR_NO_INPUT");
     let sha256_hash = env::sha256(&input);
@@ -35,7 +35,7 @@ pub extern "C" fn store_wasm_of_self() {
 #[no_mangle]
 pub fn update_self() {
     env::setup_panic_hook();
-    let contract: OctopusCouncil = env::state_read().expect("ERR_CONTRACT_IS_NOT_INITIALIZED");
+    let contract: CouncilKeeper = env::state_read().expect("ERR_CONTRACT_IS_NOT_INITIALIZED");
     contract.assert_owner();
     let current_id = env::current_account_id();
     let input = env::storage_read(&StorageKey::OctopusCouncilWasm.into_storage_key())

@@ -25,7 +25,7 @@ use types::{
     ValidatorStake, ValidatorStakeRecord,
 };
 
-const VERSION: &str = "v0.3.0";
+const VERSION: &str = "v0.5.0";
 /// Constants for gas.
 const T_GAS_CAP_FOR_MULTI_TXS_PROCESSING: u64 = 150;
 const T_GAS_FOR_ADD_PROPOSAL: u64 = 5;
@@ -50,6 +50,9 @@ pub enum StorageKey {
     OctopusCouncilWasm,
     LatestMembers,
     CouncilChangeHistories,
+    ValidatorsWaitingToUpdateRank,
+    LivingAppchainIds,
+    ExcludingValidatorAccounts,
 }
 
 #[derive(BorshSerialize, BorshDeserialize)]
@@ -66,7 +69,7 @@ pub struct InternalValidatorStake {
 
 #[near_bindgen]
 #[derive(BorshSerialize, BorshDeserialize, PanicOnDefault)]
-pub struct OctopusCouncil {
+pub struct CouncilKeeper {
     //
     owner: AccountId,
     //
@@ -74,7 +77,7 @@ pub struct OctopusCouncil {
     //
     dao_contract_account: AccountId,
     //
-    living_appchain_ids: Vec<String>,
+    living_appchain_ids: UnorderedSet<String>,
     //
     validator_stakes: LookupMap<AccountId, InternalValidatorStake>,
     //
@@ -84,13 +87,15 @@ pub struct OctopusCouncil {
     //
     latest_members: UnorderedSet<AccountId>,
     //
-    excluding_validator_accounts: Vec<AccountId>,
+    excluding_validator_accounts: UnorderedSet<AccountId>,
     //
     change_histories: LookupArray<CouncilChangeHistory>,
+    //
+    validators_waiting_to_update_rank: UnorderedSet<AccountId>,
 }
 
 #[near_bindgen]
-impl OctopusCouncil {
+impl CouncilKeeper {
     #[init]
     pub fn new(max_number_of_council_members: u32, dao_contract_account: AccountId) -> Self {
         assert!(!env::state_exists(), "The contract is already initialized.");
@@ -105,13 +110,16 @@ impl OctopusCouncil {
             owner: env::current_account_id(),
             appchain_registry_account: AccountId::from_str(second).unwrap(),
             dao_contract_account,
-            living_appchain_ids: Vec::new(),
+            living_appchain_ids: UnorderedSet::new(StorageKey::LivingAppchainIds),
             validator_stakes: LookupMap::new(StorageKey::ValidatorStakes),
             ranked_validators: RankedLookupArray::new(StorageKey::OrderedValidators),
             max_number_of_council_members,
             latest_members: UnorderedSet::new(StorageKey::LatestMembers),
-            excluding_validator_accounts: Vec::new(),
+            excluding_validator_accounts: UnorderedSet::new(StorageKey::ExcludingValidatorAccounts),
             change_histories: LookupArray::new(StorageKey::CouncilChangeHistories),
+            validators_waiting_to_update_rank: UnorderedSet::new(
+                StorageKey::ValidatorsWaitingToUpdateRank,
+            ),
         };
         result
     }
@@ -130,33 +138,46 @@ impl OctopusCouncil {
             "This function can only be called by an appchain anchor contract."
         );
         if !self.living_appchain_ids.contains(&appchain_id) {
-            self.living_appchain_ids.push(appchain_id.clone());
+            self.living_appchain_ids.insert(&appchain_id);
         }
         appchain_id
     }
     ///
     pub fn sync_validator_stakes_of_anchor(&mut self, stake_records: Vec<ValidatorStakeRecord>) {
         let appchain_id = self.assert_and_update_living_appchain_ids();
-        let mut changed = false;
         for stake_record in stake_records {
             let mut validator_stake = self
                 .validator_stakes
                 .get(&stake_record.validator_id)
                 .unwrap_or(InternalValidatorStake::new(&stake_record.validator_id));
-            validator_stake.update_stake_record(&appchain_id, &stake_record);
-            self.validator_stakes
-                .insert(&stake_record.validator_id, &validator_stake);
-            changed = self.update_validator_rank_of(&mut validator_stake);
+            if validator_stake.update_stake_record(&appchain_id, &stake_record) {
+                self.validator_stakes
+                    .insert(&stake_record.validator_id, &validator_stake);
+                log!(
+                    "Total stake of validator '{}' has changed, need to update rank.",
+                    stake_record.validator_id
+                );
+                self.validators_waiting_to_update_rank
+                    .insert(&stake_record.validator_id);
+            }
         }
-        if changed {
-            log!(
-                "validators' ranking status has changed: {}",
-                near_sdk::serde_json::to_string(&self.ranked_validators.get_slice_of(0, None))
-                    .unwrap()
-            );
-            self.check_and_generate_change_histories();
+    }
+    ///
+    pub fn update_council_change_histories(&mut self) -> MultiTxsOperationProcessingResult {
+        let validator_ids = self.validators_waiting_to_update_rank.to_vec();
+        if validator_ids.len() > 0 {
+            for validator_id in validator_ids {
+                let mut validator_stake = self.validator_stakes.get(&validator_id).unwrap();
+                self.update_validator_rank_of(&mut validator_stake);
+                self.validators_waiting_to_update_rank.remove(&validator_id);
+                if env::used_gas() > Gas::ONE_TERA.mul(T_GAS_CAP_FOR_MULTI_TXS_PROCESSING) {
+                    break;
+                }
+            }
+            return MultiTxsOperationProcessingResult::NeedMoreGas;
         } else {
-            log!("Validators' ranking status has not changed.")
+            self.check_and_generate_change_histories();
+            MultiTxsOperationProcessingResult::Ok
         }
     }
     // the function will return true if the rank of validator stake has been changed and updated,
@@ -184,13 +205,20 @@ impl OctopusCouncil {
     }
     //
     fn check_and_generate_change_histories(&mut self) {
-        let council_members = self
-            .ranked_validators
-            .get_slice_of(0, Some(self.max_number_of_council_members));
+        let validator_accounts = self.ranked_validators.get_slice_of(0, None);
+        // generate a new array of council members
+        let mut council_members = Vec::new();
+        for account_id in validator_accounts {
+            if !self.excluding_validator_accounts.contains(&account_id) {
+                council_members.push(account_id);
+                if council_members.len() >= self.max_number_of_council_members as usize {
+                    break;
+                }
+            }
+        }
+        // update `latest_members` and generate change histories
         for account_id in &council_members {
-            if !self.latest_members.contains(account_id)
-                && !self.excluding_validator_accounts.contains(account_id)
-            {
+            if !self.latest_members.contains(account_id) {
                 self.latest_members.insert(account_id);
                 let history = self.change_histories.append(&mut CouncilChangeHistory {
                     index: U64::from(0),
@@ -205,9 +233,7 @@ impl OctopusCouncil {
             }
         }
         for account_id in &self.latest_members.to_vec() {
-            if !council_members.contains(account_id)
-                || self.excluding_validator_accounts.contains(account_id)
-            {
+            if !council_members.contains(account_id) {
                 self.latest_members.remove(account_id);
                 let history = self.change_histories.append(&mut CouncilChangeHistory {
                     index: U64::from(0),
@@ -384,16 +410,38 @@ impl OctopusCouncil {
         //
         self.check_and_generate_change_histories();
     }
-    ///
-    pub fn set_excluding_validator_accounts(&mut self, accounts: Vec<AccountId>) {
-        self.assert_owner();
-        self.excluding_validator_accounts = accounts;
+    /// Called by valid validator accounts,
+    /// to exclude self from council members
+    pub fn exclude_validator_from_council(&mut self) {
+        let validator_id = env::predecessor_account_id();
+        assert!(
+            self.validator_stakes.contains_key(&validator_id),
+            "Only valid validator can call this function."
+        );
+        assert!(
+            !self.excluding_validator_accounts.contains(&validator_id),
+            "Validator '{}' is already excluded.",
+            validator_id
+        );
         //
+        self.excluding_validator_accounts.insert(&validator_id);
+        self.check_and_generate_change_histories();
+    }
+    /// Called by excluding validator account,
+    /// to recover self from excluding validator accounts
+    pub fn recover_excluding_validator(&mut self) {
+        let validator_id = env::predecessor_account_id();
+        assert!(
+            self.excluding_validator_accounts.contains(&validator_id),
+            "Only excluding validator can call this function."
+        );
+        //
+        self.excluding_validator_accounts.remove(&validator_id);
         self.check_and_generate_change_histories();
     }
 }
 
-impl Ownable for OctopusCouncil {
+impl Ownable for CouncilKeeper {
     //
     fn get_owner(&self) -> AccountId {
         self.owner.clone()
@@ -421,15 +469,20 @@ impl InternalValidatorStake {
         &mut self,
         appchain_id: &String,
         stake_record: &ValidatorStakeRecord,
-    ) {
+    ) -> bool {
         assert_eq!(
             self.validator_id, stake_record.validator_id,
             "Mismatch validator id in `ValidatorStakeRecord`."
         );
         let old_value = self.stake_in_appchains.get(&appchain_id).unwrap_or(U128(0));
-        self.stake_in_appchains
-            .insert(appchain_id, &stake_record.total_stake);
-        self.total_stake.0 = self.total_stake.0 - old_value.0 + stake_record.total_stake.0;
+        if stake_record.total_stake != old_value {
+            self.stake_in_appchains
+                .insert(appchain_id, &stake_record.total_stake);
+            self.total_stake.0 = self.total_stake.0 - old_value.0 + stake_record.total_stake.0;
+            true
+        } else {
+            false
+        }
     }
     //
     pub fn to_json_type(&self) -> ValidatorStake {
@@ -463,7 +516,7 @@ impl RankValueHolder<AccountId> for LookupMap<AccountId, InternalValidatorStake>
 }
 
 #[near_bindgen]
-impl ResolverForSelfCallback for OctopusCouncil {
+impl ResolverForSelfCallback for CouncilKeeper {
     //
     fn resolve_add_proposal(&mut self, change_history: &mut CouncilChangeHistory) {
         assert_self();
